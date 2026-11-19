@@ -41,6 +41,9 @@ jobs:
         env:
           KEYSTORE: ${{ secrets.MOONFIN_TEST_KEYSTORE }}
         run: |
+          # AGP signs with $ANDROID_USER_HOME/debug.keystore and creates a
+          # fresh one when it finds none, so the key goes where it looks.
+          echo "ANDROID_USER_HOME=$HOME/.android" >> "$GITHUB_ENV"
           mkdir -p ~/.android
           echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
       - name: Build
@@ -51,7 +54,11 @@ jobs:
           flutter build apk --flavor mobile --release
           cp build/app/outputs/flutter-apk/app-mobile-release.apk "Moonfin-Test-${{ inputs.tag }}.apk"
           sha256sum "Moonfin-Test-${{ inputs.tag }}.apk" | tee sha.txt
-          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "Moonfin-Test-${{ inputs.tag }}.apk" | grep SHA-256 | head -1
+          signer=$("$(ls -d "$ANDROID_HOME"/build-tools/* | tail -1)"/apksigner verify --print-certs "Moonfin-Test-${{ inputs.tag }}.apk" | grep -m1 'SHA-256' | awk '{print $NF}')
+          echo "Signer: $signer"
+          # The test key every build before used; another one can't update
+          # over an installed test build.
+          test "$signer" = f43dda1125c12de9bfe0c202f52d7f2b2d554b690905e3d01ef55f2a62c04276
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
