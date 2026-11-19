@@ -1,0 +1,68 @@
+# Fork only: builds a test APK of a branch on demand and publishes it as a
+# pre-release. It installs as "Moonfin Test" (org.moonfin.androidtv.test)
+# next to a regular install, signed with a test key kept in the
+# MOONFIN_TEST_KEYSTORE secret so every build updates over the last one.
+name: Test APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or commit to build
+        default: follow-entry-redirect
+        required: true
+      tag:
+        description: Release tag, e.g. entry-redirect-rc4
+        required: true
+      title:
+        description: Release title
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+      - name: Test key
+        env:
+          KEYSTORE: ${{ secrets.MOONFIN_TEST_KEYSTORE }}
+        run: |
+          mkdir -p ~/.android
+          echo "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+      - name: Build
+        env:
+          MOONFIN_TEST_ID_SUFFIX: .test
+        run: |
+          flutter pub get
+          flutter build apk --flavor mobile --release
+          cp build/app/outputs/flutter-apk/app-mobile-release.apk "Moonfin-Test-${{ inputs.tag }}.apk"
+          sha256sum "Moonfin-Test-${{ inputs.tag }}.apk" | tee sha.txt
+          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "Moonfin-Test-${{ inputs.tag }}.apk" | grep SHA-256 | head -1
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Test build of \`${{ inputs.ref }}\` (commit \`$(git rev-parse --short HEAD)\`)."
+            echo
+            echo "**Not an official Moonfin release.** Installs as \"Moonfin Test\" (\`org.moonfin.androidtv.test\`) next to a regular Moonfin install. Built with Flutter 3.47.2, \`--flavor mobile --release\`."
+            echo
+            echo "SHA-256: \`$(cut -d' ' -f1 sha.txt)\`"
+          } > notes.md
+          gh release create "${{ inputs.tag }}" "Moonfin-Test-${{ inputs.tag }}.apk" \
+            --repo "${{ github.repository }}" --target "$(git rev-parse HEAD)" \
+            --prerelease --title "${{ inputs.title }}" --notes-file notes.md
