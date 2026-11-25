@@ -1,0 +1,70 @@
+# Fork only: builds an unsigned iOS test IPA of a branch on demand and
+# publishes it as a pre-release. Unsigned: sign it on install with your own
+# Apple ID (Sideloadly, AltStore or similar).
+name: Test IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or commit to build
+        default: entry-redirect-app
+        required: true
+      tag:
+        description: Release tag, e.g. entry-redirect-ios-rc1
+        required: true
+      title:
+        description: Release title
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+      - name: Newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          XCODE=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+      - name: Dependencies
+        run: |
+          flutter pub get
+          chmod +x ios/game_host/fetch_cores.sh ios/game_host/wrap_frameworks.sh
+          ./ios/game_host/fetch_cores.sh
+          ./ios/game_host/wrap_frameworks.sh
+      - name: Build unsigned IPA
+        run: |
+          flutter build ipa --release --no-codesign
+          APP_PATH=$(find build/ios/archive -type d -path '*/Products/Applications/*.app' | head -1)
+          WORK=$(mktemp -d)
+          mkdir -p "$WORK/Payload"
+          cp -R "$APP_PATH" "$WORK/Payload/"
+          (cd "$WORK" && zip -qry "$GITHUB_WORKSPACE/Moonfin-Test-${{ inputs.tag }}-unsigned.ipa" Payload)
+          shasum -a 256 "Moonfin-Test-${{ inputs.tag }}-unsigned.ipa" | tee sha.txt
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Unsigned iOS test build of \`${{ inputs.ref }}\` (commit \`$(git rev-parse --short HEAD)\`)."
+            echo
+            echo "**Not an official Moonfin release.** Unsigned: sign it with your own Apple ID when you install it (e.g. Sideloadly or AltStore). Built with Flutter 3.47.2 and $(xcodebuild -version | head -1)."
+            echo
+            echo "SHA-256: \`$(cut -d' ' -f1 sha.txt)\`"
+          } > notes.md
+          gh release create "${{ inputs.tag }}" "Moonfin-Test-${{ inputs.tag }}-unsigned.ipa" \
+            --repo "${{ github.repository }}" --target "$(git rev-parse HEAD)" \
+            --prerelease --title "${{ inputs.title }}" --notes-file notes.md
