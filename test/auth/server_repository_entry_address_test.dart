@@ -149,6 +149,102 @@ void main() {
     expect(await repo.followEntryAddressOf('server-1'), isNull);
   });
 
+  test('a request that failed to connect gets the new address', () async {
+    await repo.saveServer(saved());
+    final moves = <ServerMove>[];
+    final sub = repo.serverMoved.listen(moves.add);
+
+    // Requests failing together share one ask.
+    final asks = await Future.wait([
+      repo.followMovedAddress('http://127.0.0.1:1/', serverId: 'server-1'),
+      repo.followMovedAddress('http://127.0.0.1:1', serverId: 'server-1'),
+    ]);
+
+    expect(asks, [targetUrl(), targetUrl()]);
+    expect(repo.getServer('server-1')!.address, targetUrl());
+    await Future<void>.delayed(Duration.zero);
+    expect(moves.single.server.address, targetUrl());
+    expect(moves.single.from, 'http://127.0.0.1:1');
+    await sub.cancel();
+  });
+
+  test('a request that fails after the move still gets the new address',
+      () async {
+    await repo.saveServer(saved());
+    expect(
+      await repo.followMovedAddress('http://127.0.0.1:1', serverId: 'server-1'),
+      targetUrl(),
+    );
+
+    // A request that started on the old address before the move and failed
+    // after it: no saved server uses that address any more.
+    expect(
+      await repo.followMovedAddress(
+        'http://127.0.0.1:1/',
+        serverId: 'server-1',
+      ),
+      targetUrl(),
+    );
+    expect(await repo.followMovedAddress('http://127.0.0.1:2'), isNull);
+  });
+
+  test('an old address another saved server uses now is not redirected',
+      () async {
+    await repo.saveServer(saved());
+    expect(
+      await repo.followMovedAddress('http://127.0.0.1:1', serverId: 'server-1'),
+      targetUrl(),
+    );
+    await repo.saveServer(
+      Server(
+        id: 'server-2',
+        name: 'Other',
+        address: 'http://127.0.0.1:1',
+        version: '10.11.0',
+        serverType: ServerType.jellyfin,
+        dateAdded: DateTime(2026),
+      ),
+    );
+
+    expect(repo.serverIdAt('http://127.0.0.1:1/'), 'server-2');
+    // Its failed request, token and all, stays with it.
+    expect(
+      await repo.followMovedAddress(
+        'http://127.0.0.1:1/',
+        serverId: 'server-2',
+      ),
+      isNull,
+    );
+    // One that started for the server that left goes after that one only.
+    expect(
+      await repo.followMovedAddress(
+        'http://127.0.0.1:1/',
+        serverId: 'server-1',
+      ),
+      targetUrl(),
+    );
+  });
+
+  test('two saved servers at one address get no server for a request',
+      () async {
+    await repo.saveServer(saved());
+    // Another server now sits where server-1 still has saved.
+    await repo.saveServer(
+      Server(
+        id: 'server-2',
+        name: 'Other',
+        address: 'http://127.0.0.1:1',
+        version: '10.11.0',
+        serverType: ServerType.jellyfin,
+        dateAdded: DateTime(2026),
+      ),
+    );
+
+    expect(repo.serverIdAt('http://127.0.0.1:1'), isNull);
+    // So a failed request there goes nowhere, whoever's token it carries.
+    expect(await repo.followMovedAddress('http://127.0.0.1:1'), isNull);
+  });
+
   test('a slow save never puts an older address back', () async {
     await repo.saveServer(saved());
     clients.byId['server-1'] = _Client('http://127.0.0.1:1');
@@ -241,6 +337,28 @@ void main() {
 
     expect(server!.entryAddress, entryUrl());
     expect(server.entryServerId, 'abc');
+  });
+
+  test('only a server added through a redirect can move', () async {
+    await repo.saveServer(saved());
+
+    expect(repo.canMove('http://127.0.0.1:1/'), isTrue);
+    expect(repo.canMove('http://127.0.0.1:2'), isFalse);
+  });
+
+  test('an address no saved server uses is not asked about', () async {
+    await repo.saveServer(saved());
+
+    expect(await repo.followMovedAddress('http://127.0.0.1:2'), isNull);
+    expect(repo.getServer('server-1')!.address, 'http://127.0.0.1:1');
+  });
+
+  test('opening the server list follows every entry address', () async {
+    await repo.saveServer(saved());
+
+    await repo.followAllEntryAddresses();
+
+    expect(repo.getServer('server-1')!.address, targetUrl());
   });
 
   test('a redirect to a different server is not followed', () async {

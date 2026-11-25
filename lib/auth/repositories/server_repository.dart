@@ -14,6 +14,15 @@ import '../models/silo_native_offer.dart';
 import '../store/authentication_store.dart';
 import '../store/client_certificate_store.dart';
 
+/// A saved server that answers on a new address now: [from] is where it
+/// was, [server] is it as saved at its new address.
+class ServerMove {
+  const ServerMove({required this.from, required this.server});
+
+  final String from;
+  final Server server;
+}
+
 class ServerRepository {
   final AuthenticationStore _authStore;
   final MediaServerClientFactory _clientFactory;
@@ -314,6 +323,86 @@ class ServerRepository {
     return followed.address == server.address ? null : followed.address;
   }
 
+  /// Saved servers whose entry address led somewhere new.
+  Stream<ServerMove> get serverMoved => _movedController.stream;
+  final _movedController = StreamController<ServerMove>.broadcast();
+
+  /// Asks the entry address of every saved server that has one, all at once,
+  /// so a list of servers shows where they answer now.
+  Future<void> followAllEntryAddresses() => Future.wait([
+    for (final server in List.of(_servers))
+      if (server.entryAddress != null) withFollowedEntryAddress(server),
+  ]);
+
+  /// For [ServerMoved.resolver]: the new address of the saved server
+  /// [serverId] that a request to [baseUrl] was for, when it couldn't connect. All requests
+  /// that fail together share one ask, and an ask that found nothing holds for
+  /// a few seconds, so a dead server isn't asked once per request.
+  ///
+  /// A request that started before its server moved and failed after it gets
+  /// the address that server is at now. It never goes to another server's
+  /// address, whatever server uses or used its own address.
+  Future<String?> followMovedAddress(String baseUrl, {String? serverId}) {
+    final wanted = _withoutTrailingSlash(baseUrl);
+    final server = serverId == null ? null : getServer(serverId);
+    if (server == null) return Future.value();
+    // Its server moved while the request was on the way: it goes where that
+    // server is now, never to where some other server went.
+    if (_withoutTrailingSlash(server.address) != wanted) {
+      return Future.value(server.address);
+    }
+    if (server.entryAddress == null) return Future.value();
+    final asked = _lastFruitlessAsk[server.id];
+    if (asked != null &&
+        DateTime.now().difference(asked) < _fruitlessAskHold) {
+      return Future.value();
+    }
+    return _movingAsks[server.id] ??= () async {
+      try {
+        final moved = await followEntryAddressOf(server.id);
+        if (moved == null) {
+          _lastFruitlessAsk[server.id] = DateTime.now();
+        } else {
+          _lastFruitlessAsk.remove(server.id);
+        }
+        return moved;
+      } finally {
+        _movingAsks.remove(server.id);
+      }
+    }();
+  }
+
+  /// For [ServerMoved.serverAt]: the saved server a request to [baseUrl] is
+  /// for, taken when it starts, so a move can only send it to that server.
+  ///
+  /// When more than one saved server is at [baseUrl], the address alone
+  /// can't tell whose request it is, so it gets none and is never sent
+  /// elsewhere: following it could hand one server's token to another.
+  String? serverIdAt(String baseUrl) {
+    final wanted = _withoutTrailingSlash(baseUrl);
+    final at = _servers
+        .where((s) => _withoutTrailingSlash(s.address) == wanted)
+        .toList();
+    return at.length == 1 ? at.single.id : null;
+  }
+
+  /// For [ServerMoved.canMove]: whether [baseUrl] is the address of a saved
+  /// server added through a redirect.
+  bool canMove(String baseUrl) {
+    final wanted = _withoutTrailingSlash(baseUrl);
+    return _servers.any(
+      (s) =>
+          s.entryAddress != null && _withoutTrailingSlash(s.address) == wanted,
+    );
+  }
+
+  final _movingAsks = <String, Future<String?>>{};
+  final _lastFruitlessAsk = <String, DateTime>{};
+  static const _fruitlessAskHold = Duration(seconds: 3);
+
+  static String _withoutTrailingSlash(String url) =>
+      url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+
   Future<Server> _followedEntry(Server server) async {
     final entry = server.entryAddress;
     final entryServerId = server.entryServerId;
@@ -344,6 +433,7 @@ class ServerRepository {
       }
       final moved = (current ?? server).copyWith(address: resolvedUrl);
       await updateServer(moved);
+      _movedController.add(ServerMove(from: server.address, server: moved));
       return moved;
     } catch (_) {
       return server;
