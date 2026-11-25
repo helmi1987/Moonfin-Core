@@ -424,7 +424,7 @@ class Media3PlayerBackend extends PlayerBackend
       case 'activityAction':
         _activityActionController.add(map.cast<String, dynamic>());
       case 'serverStalled':
-        _diag('Media3: server request stalled', level: LogLevel.warning);
+        _diag('Media3: server request stalled', level: LogLevel.debug);
         _serverStall.add(null);
       case 'playerError':
         _setSubtitleLoading(false);

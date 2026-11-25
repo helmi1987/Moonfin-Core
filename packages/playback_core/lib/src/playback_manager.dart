@@ -1627,9 +1627,11 @@ class PlaybackManager implements AudioOwnable {
     }
     if (backend is ServerRebaseBackend) {
       _streamSubs.add(
-        (backend as ServerRebaseBackend).serverStallStream.listen(
-          (_) => _serverStallController.add(null),
-        ),
+        // Only a server added through a redirect can have moved: a slow
+        // transcode start or seek on any other server asks nothing.
+        (backend as ServerRebaseBackend).serverStallStream.listen((_) {
+          if (canServerMove?.call() ?? false) _serverStallController.add(null);
+        }),
       );
     }
   }

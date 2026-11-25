@@ -713,8 +713,10 @@ void registerPlaybackModule() {
   _getIt.registerSingleton<PlaybackManager>(manager);
   // A lost stream may mean the server moved behind its entry address; the
   // check then hands the client the new address before the next reconnect.
+  // Only for a server added through a redirect: any other can't have moved.
   manager.reconnectingStream.where((reconnecting) => reconnecting).listen((_) {
-    if (_getIt.isRegistered<ConnectivityService>()) {
+    if (_getIt.isRegistered<ConnectivityService>() &&
+        (manager.canServerMove?.call() ?? false)) {
       unawaited(_getIt<ConnectivityService>().onStreamConnectionLost());
     }
   });

@@ -1151,5 +1151,27 @@ void main() {
         expect(stalls, 1);
       });
     });
+
+    test('a stalled request on a server that can\'t move asks nothing', () {
+      final resolver = _Resolver();
+      final backend = _RebaseBackend();
+      _withPlayback(resolver, player: backend, (async, manager, _, service) {
+        var stalls = 0;
+        manager.serverStalledStream.listen((_) => stalls++);
+        backend.stalls.add(null);
+        async.flushMicrotasks();
+        expect(stalls, 0);
+
+        manager.canServerMove = () => false;
+        backend.stalls.add(null);
+        async.flushMicrotasks();
+        expect(stalls, 0);
+
+        manager.canServerMove = () => true;
+        backend.stalls.add(null);
+        async.flushMicrotasks();
+        expect(stalls, 1);
+      });
+    });
   });
 }
