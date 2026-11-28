@@ -13,6 +13,7 @@ import '../auth/repositories/server_repository.dart';
 import '../data/services/connectivity_service.dart';
 import '../data/services/media_server_client_factory.dart';
 import '../playback/media3_server_rebase.dart';
+import '../push_ping/push_ping_module.dart';
 import 'entry_address_store.dart';
 import 'entry_redirect.dart';
 import 'entry_redirect_connectivity.dart';
@@ -30,6 +31,7 @@ Future<void> registerEntryRedirect() async {
   );
   repository.entryRedirect = redirect;
   getIt.registerSingleton<EntryRedirect>(redirect);
+  await registerPushPing(redirect);
 
   // A request that can't reach a server added through a redirect asks the
   // entered address where it went, so a moved target is taken at once.

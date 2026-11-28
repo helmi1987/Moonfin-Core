@@ -45,6 +45,7 @@ import '../../data/services/item_membership_service.dart';
 import '../../data/services/plex_tv_service.dart';
 import '../../data/services/plugin_sync_service.dart';
 import '../../data/services/push_messaging_service.dart';
+import '../../entry_redirect/entry_redirect.dart'; // push ping
 import '../../data/services/remote_search_session.dart';
 import '../../data/services/server_messages_service.dart';
 import '../../data/services/socket_handler.dart';
@@ -482,6 +483,18 @@ class SessionRepository {
         }
       } catch (_) {}
     }
+    // push ping: register this device with portnook once (server added
+    // through an entry address only).
+    try {
+      final redirect = GetIt.instance.isRegistered<EntryRedirect>()
+          ? GetIt.instance<EntryRedirect>()
+          : null;
+      if (redirect?.pushPing != null && redirect!.entryOf(serverId) != null) {
+        unawaited(
+          redirect.pushPing!.afterLogin(serverId, client.baseUrl, user.accessToken),
+        );
+      }
+    } catch (_) {}
     await _pluginSyncService.syncNotificationPrefs(client);
 
     final seerrCameUp = await _pluginSyncService.configureSeerr(

@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import '../auth/models/server.dart';
 import '../auth/repositories/server_repository.dart';
 import '../data/services/media_server_client_factory.dart';
+import '../push_ping/push_ping.dart';
 import 'entry_address_store.dart';
 
 /// A saved server that answers on a new address now: [from] is where it
@@ -32,6 +33,10 @@ class EntryRedirect {
   final ServerRepository _repository;
   final EntryAddressStore _store;
   final MediaServerClientFactory _clients;
+
+  /// Push ping: this device's file at portnook, asked before the entry
+  /// address. Set by `registerPushPing`.
+  PushPing? pushPing;
 
   /// The entered address of the saved server [serverId], when it was added
   /// through a redirect.
@@ -179,6 +184,18 @@ class EntryRedirect {
       return server;
     }
     final wasSaved = _repository.getServer(server.id) != null;
+    // Push ping: the address in this device's file (signed by portnook) is
+    // tried first; when it doesn't answer as this server, the entry address.
+    final fromFile = await pushPing?.addressOf(server.id);
+    if (fromFile != null && fromFile != server.address) {
+      try {
+        final (info, _, resolvedUrl) = await _repository.probeServer(fromFile);
+        if (resolvedUrl.isNotEmpty &&
+            info['Id']?.toString() == entry.serverId) {
+          return await _save(server, resolvedUrl, entry, wasSaved);
+        }
+      } catch (_) {}
+    }
     try {
       final (info, _, resolvedUrl) = await _repository.probeServer(
         entry.address,

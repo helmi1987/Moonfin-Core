@@ -8,6 +8,7 @@ import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../firebase_options.dart';
+import '../../push_ping/push_ping_module.dart' show pushPingBackground; // push ping
 import '../../ui/navigation/app_router.dart';
 import '../../ui/navigation/deep_link_navigator.dart';
 import '../../ui/widgets/server_messages_dialog.dart';
@@ -17,7 +18,9 @@ import 'plugin_sync_service.dart';
 /// Every push carries a notification block, so the OS draws background and
 /// terminated notifications. Nothing to do here.
 @pragma('vm:entry-point')
-Future<void> pushBackgroundHandler(RemoteMessage message) async {}
+Future<void> pushBackgroundHandler(RemoteMessage message) async {
+  pushPingBackground(message); // push ping
+}
 
 /// Client side of the push notification path. The plugin sends FCM messages
 /// carrying both a notification block (title/body) and a data route, so the OS
