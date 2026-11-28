@@ -114,6 +114,10 @@ class ServerRepository {
 
     final candidates = _buildCandidates(address);
     _stateController.add(ServerConnecting(address: address));
+    // Push ping: behind portnook's gate the server answers only a set-up
+    // device; sign in on portnook's page first when it asks for that.
+    final gated = candidates.where((c) => c.startsWith('https://'));
+    if (gated.isNotEmpty) await entryRedirect?.pushPing?.prepareGate(gated.first);
 
     String? lastCandidate;
     String? lastErrorType;

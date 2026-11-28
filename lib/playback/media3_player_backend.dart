@@ -17,6 +17,7 @@ import 'media3_letterbox_crop.dart';
 import 'media3_playback_status.dart';
 import 'server_transcode_capabilities.dart';
 import 'subtitle_fonts.dart';
+import '../push_ping/push_ping_gate.dart'; // push ping
 import 'media3_server_rebase.dart'; // entry redirect
 
 class Media3PlayerBackend extends PlayerBackend
@@ -1304,6 +1305,7 @@ class Media3PlayerBackend extends PlayerBackend
             (key, value) => MapEntry(key.toString(), value.toString()),
           )
         : <String, String>{};
+    headers.addAll(PushPingGate.headersFor(url)); // push ping
 
     final isPreview = payload['preview'] == true;
 

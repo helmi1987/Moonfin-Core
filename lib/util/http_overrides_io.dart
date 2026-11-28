@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:server_core/server_core.dart';
 
+import '../push_ping/gate_http_client_io.dart'; // push ping
+
 void configureHttpOverrides() {
   // Some strict or older Nginx reverse proxies on 443 abort the handshake unless
   // the client allows legacy TLS renegotiation, so enable it for every connection.
@@ -29,6 +31,7 @@ class _MoonfinHttpOverrides extends HttpOverrides {
     client.badCertificateCallback =
         (_, host, _) => acceptsUntrustedCertificate(host);
     applyClientCertificates(client, fallback: secContext);
-    return client;
+    // Push ping (portnook fork): the gate header for servers set up with portnook.
+    return GatedHttpClient(client);
   }
 }

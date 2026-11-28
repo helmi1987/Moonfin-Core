@@ -27,6 +27,7 @@ import 'pending_subtitle_choice.dart';
 import 'secondary_subtitle_position.dart';
 import 'server_transcode_capabilities.dart';
 import 'subtitle_fonts.dart';
+import '../push_ping/push_ping_gate.dart'; // push ping
 
 class _ParsedMpvConfCacheEntry {
   final DateTime modified;
@@ -888,6 +889,7 @@ class MediaKitPlayerBackend extends PlayerBackend
         for (final e in raw.entries)
           if (e.key != null && e.value != null) '${e.key}': '${e.value}',
     };
+    headers.addAll(PushPingGate.headersFor(url)); // push ping
     return headers.isEmpty ? Media(url) : Media(url, httpHeaders: headers);
   }
 

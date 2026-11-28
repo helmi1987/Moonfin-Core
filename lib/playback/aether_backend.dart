@@ -23,6 +23,7 @@ import 'letterbox_croppers.dart';
 import 'lossless_audio_bridge.dart';
 import 'server_transcode_capabilities.dart';
 import 'subtitle_fonts.dart';
+import '../push_ping/push_ping_gate.dart'; // push ping
 
 /// Playback backend driving the native AetherEngine wrapper over a method
 /// channel on iOS and macOS. Serves main playback there: video, live TV,
@@ -303,6 +304,7 @@ class AetherBackend
             (key, value) => MapEntry(key.toString(), value.toString()),
           )
         : <String, String>{};
+    headers.addAll(PushPingGate.headersFor(url)); // push ping
 
     _completed = false;
     // Until the new session ticks, the previous item's end would stand in

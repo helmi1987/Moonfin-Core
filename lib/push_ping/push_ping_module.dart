@@ -8,6 +8,8 @@
 //   (the fork's test builds). Its push token goes to portnook.
 // * A push ("t": "refresh"), a return to the app and the start of a session
 //   make the app read its files again.
+// * portnook's gate: requests to a set-up server carry the gate header
+//   (push_ping_gate.dart); a gated server is added after its sign-in page.
 import 'dart:async';
 import 'dart:isolate';
 import 'dart:ui' show IsolateNameServer;
@@ -15,12 +17,14 @@ import 'dart:ui' show IsolateNameServer;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 
 import '../entry_redirect/entry_redirect.dart';
+import '../ui/navigation/app_router.dart';
 import '../util/platform_detection.dart';
 import 'push_ping.dart';
+import 'push_ping_sign_in.dart';
 
 const _portName = 'moonfin_push_ping';
 
@@ -45,8 +49,19 @@ Future<void> registerPushPing(EntryRedirect redirect) async {
         : 'other',
   );
   await ping.init();
+  // portnook's gate: its sign-in page, on top of whatever is open
+  if (!kIsWeb) {
+    ping.signIn = (base) async {
+      final nav = appRouter.routerDelegate.navigatorKey.currentState;
+      if (nav == null) return null;
+      return nav.push<Map<String, dynamic>>(
+        MaterialPageRoute(builder: (_) => PushPingSignInPage(base: base)),
+      );
+    };
+  }
   getIt.registerSingleton<PushPing>(ping);
   redirect.pushPing = ping;
+  redirect.notePushPingAddresses();
   final messaging = _PushPingMessaging(ping, redirect);
   ping.changed.listen((_) => unawaited(messaging.start()));
   unawaited(messaging.start());

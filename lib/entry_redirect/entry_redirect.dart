@@ -70,6 +70,9 @@ class EntryRedirect {
         redirected ? EntryAddress(address: entered, serverId: id) : null,
       );
     } catch (_) {}
+    // Push ping: a registration made before adding it (portnook's gate) is
+    // this server's now.
+    await pushPing?.adopt(server.id, server.address);
   }
 
   /// [server] at the address its entry address redirects to now, saved when
@@ -263,7 +266,15 @@ class EntryRedirect {
     return done;
   }
 
+  /// Push ping: tells it where every saved server is now (gate header).
+  void notePushPingAddresses() {
+    for (final s in _repository.servers) {
+      pushPing?.noteAddress(s.id, s.address);
+    }
+  }
+
   void _pointClient(Server server) {
+    pushPing?.noteAddress(server.id, server.address); // push ping gate
     final client = _clients.getClientIfExists(server.id);
     if (client != null && client.baseUrl != server.address) {
       client.baseUrl = server.address;
